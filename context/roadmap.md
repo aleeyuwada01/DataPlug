@@ -2,19 +2,22 @@
 
 ## Remaining Tasks
 
-### 1. Backend Integration (High Priority)
-- **Firebase Auth**: Replace mock login/signup logic with actual Firebase Authentication.
-- **Firestore**: Implement real-time listeners for user balance, transaction history, and reward points.
-- **Daily Claims**: Connect the daily check-in feature to a database-backed timestamp system.
+### 1. Payment & Wallet (Completed)
+- [x] **Flutterwave Integration**: Bank Transfer, USSD, and OPay.
+- [x] **Webhook Reconciliation**: Secure server-side wallet credit.
+- [x] **Premium Loading**: Skeleton rows for banks and balances.
 
-### 2. Functional Features
-- **Data/Airtime Purchase**: Implement the selection logic and connect it to a payment gateway/API provider.
+### 2. Functional Features (Next Steps)
+- **Data/Airtime Provider Integration**: Connect the purchase flow to a real VTU API (e.g., ClubKonnect, VTpass, or similar).
 - **Contact Integration**: Use `expo-contacts` to allow users to select phone numbers from their phonebook.
 - **Push Notifications**: Configure `expo-notifications` for transaction alerts and reward reminders.
 
-### 3. File Exports
-- **Receipt PDF**: Convert the currently static receipt modal into a downloadable/shareable PDF using `expo-print` or `expo-sharing`.
+### 3. Production & Deployment
+- [ ] **Render Deployment**: Finalize backend hosting and environment variables.
+- [ ] **EAS Build**: Generate production `.apk` and `.aab` files.
+- [ ] **Domain Setup**: Connect custom domain for the API.
 
-### 4. Polish
+### 4. Polish & Security
+- **Receipt PDF**: Convert the currently static receipt modal into a downloadable/shareable PDF using `expo-print` or `expo-sharing`.
 - **Profile Functionality**: Connect "Edit Profile" and "Settings" to persistent storage.
-- **Security**: Implement Biometric Auth (FaceID/Fingerprint) for transaction confirmation.
+- **Biometric Auth**: Implement FaceID/Fingerprint for transaction confirmation.

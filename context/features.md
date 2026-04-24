@@ -31,12 +31,18 @@
 - **Welcome Redirect**: Implemented logic in `_layout.tsx` to automatically redirect new sessions to the Welcome/Onboarding screen.
 - **Transaction Receipts**: Professionally branded receipt modals in the History tab featuring the DataPlug logo and transaction details.
 
-### 6. Payment & Wallet System (New)
-- **Flutterwave Integration**: Switched from simulated funding to real **Flutterwave Pay With Bank Transfer**.
+### 6. Payment & Wallet System
+- **Flutterwave Multi-Method Integration**: Expanded funding options to include USSD and OPay Wallet.
 - **Dynamic Virtual Accounts**: Generates a unique NGN bank account for every funding request with a 60-minute expiry.
+- **USSD Offline Payments**:
+    - **Orchestrator Flow**: Implements the V2 flow for bank-specific dial codes.
+    - **Bank Picker**: Searchable list with pulse-animated skeleton loading states.
+    - **Smart Formatting**: Automatically wraps raw codes in USSD syntax (`*code#`) for direct dialing.
+- **OPay Wallet**:
+    - **Direct Redirect**: Seamlessly redirects users to the OPay portal for transaction authorization.
 - **Automated Webhooks**: A secure backend listener (`/api/webhooks/flutterwave`) that automatically credits the user's wallet upon successful transfer.
 - **Verification Logic**: Implemented secondary server-side verification with Flutterwave to prevent spoofed payments.
-- **Copy-to-Clipboard**: Enhanced funding UI with one-tap copying for account numbers.
+- **Premium Loading States**: Custom skeleton screens and activity indicators to eliminate "phantom" loading during API calls.
 
 ## Technical Implementation Highlights
 - **Backend**: Node.js / Express / TypeScript / Drizzle ORM / Neon PostgreSQL.
