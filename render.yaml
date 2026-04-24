@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: dataplug-api
+    runtime: node
+    plan: free
+    region: ohio
+    rootDir: server
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3001
+      - key: DATABASE_URL
+        sync: false # Set this in Render Dashboard
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: CLIENT_URL
+        value: https://aleeyuwada01.github.io/DataPlug # Replace with your eventual app domain or dashboard
+      - key: FLUTTERWAVE_PUBLIC_KEY
+        sync: false # Set this in Render Dashboard
+      - key: FLUTTERWAVE_SECRET_KEY
+        sync: false # Set this in Render Dashboard
+      - key: FLUTTERWAVE_ENCRYPTION_KEY
+        sync: false # Set this in Render Dashboard
+      - key: FLUTTERWAVE_HASH
+        value: dataplug_webhook_secret_hash
+      - key: TERMII_API_KEY
+        sync: false # Set this in Render Dashboard
