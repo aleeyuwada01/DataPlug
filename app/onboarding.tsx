@@ -63,6 +63,11 @@ export default function OnboardingScreen() {
       return;
     }
     setErrorMsg('');
+    
+    // TEMPORARILY DISABLED OTP FLOW
+    animateStep('password');
+    
+    /*
     setIsSubmitting(true);
     try {
       await api.auth.sendOtp(phone);
@@ -72,6 +77,7 @@ export default function OnboardingScreen() {
     } finally {
       setIsSubmitting(false);
     }
+    */
   };
 
   const handleVerifyOtp = async () => {

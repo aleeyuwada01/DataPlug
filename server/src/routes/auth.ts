@@ -105,7 +105,8 @@ router.post("/register", async (req: Request, res: Response) => {
 
     const fullPhone = phone.startsWith("+234") ? phone : `+234${phone.replace(/^0/, "")}`;
 
-    // Check phone is verified
+    // TEMPORARILY DISABLED: Check phone is verified via OTP
+    /*
     const [verified] = await db
       .select()
       .from(otpCodes)
@@ -115,6 +116,7 @@ router.post("/register", async (req: Request, res: Response) => {
     if (!verified) {
       return res.status(400).json({ error: "Phone number not verified. Complete OTP first." });
     }
+    */
 
     // Check if user already exists
     const [existing] = await db
