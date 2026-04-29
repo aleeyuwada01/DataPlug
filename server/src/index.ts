@@ -7,6 +7,7 @@ import "dotenv/config";
 
 import { pool } from "./db";
 import passport from "./auth/passport";
+import { attachJwtUser } from "./auth/middleware";
 import authRoutes from "./routes/auth";
 import walletRoutes from "./routes/wallet";
 import transactionRoutes from "./routes/transactions";
@@ -87,6 +88,9 @@ app.use(
 // ─── Passport ────────────────────────────────────────────────────────────────
 app.use(passport.initialize());
 app.use(passport.session());
+
+// ─── JWT Auth (fallback for cross-domain where cookies fail) ─────────────────
+app.use(attachJwtUser);
 
 // ─── Routes ──────────────────────────────────────────────────────────────────
 app.use("/api/auth", authRoutes);

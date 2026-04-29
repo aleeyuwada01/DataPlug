@@ -1,8 +1,10 @@
 import { Platform } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 /**
  * DataPlug API Client
  * Handles all communication between the mobile app and the Express backend.
+ * Uses JWT Bearer tokens for authentication (cross-domain safe).
  */
 
 // Use LAN IP so physical devices on the same network can access the server
@@ -20,10 +22,48 @@ const PROD_BASE = process.env.EXPO_PUBLIC_API_URL || "https://dataplug-prwt.onre
 
 const BASE_URL = __DEV__ ? DEV_BASE : PROD_BASE;
 
+const TOKEN_KEY = "dataplug_auth_token";
+
 type RequestOptions = {
   method?: "GET" | "POST" | "PATCH" | "DELETE";
   body?: any;
   headers?: Record<string, string>;
+};
+
+/** Simple token storage that works on both web and native */
+const tokenStore = {
+  async get(): Promise<string | null> {
+    try {
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        return localStorage.getItem(TOKEN_KEY);
+      }
+      return await AsyncStorage.getItem(TOKEN_KEY);
+    } catch {
+      return null;
+    }
+  },
+  async set(token: string): Promise<void> {
+    try {
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        localStorage.setItem(TOKEN_KEY, token);
+        return;
+      }
+      await AsyncStorage.setItem(TOKEN_KEY, token);
+    } catch {
+      // Silently fail
+    }
+  },
+  async remove(): Promise<void> {
+    try {
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        localStorage.removeItem(TOKEN_KEY);
+        return;
+      }
+      await AsyncStorage.removeItem(TOKEN_KEY);
+    } catch {
+      // Silently fail
+    }
+  },
 };
 
 class ApiClient {
@@ -36,13 +76,17 @@ class ApiClient {
   private async request<T = any>(endpoint: string, options: RequestOptions = {}): Promise<T> {
     const { method = "GET", body, headers = {} } = options;
 
+    // Get stored JWT token
+    const token = await tokenStore.get();
+
     const config: RequestInit = {
       method,
       headers: {
         "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...headers,
       },
-      credentials: "include", // Include session cookies
+      credentials: "include", // Keep for backward compat with session cookies
     };
 
     if (body && method !== "GET") {
@@ -74,14 +118,30 @@ class ApiClient {
     verifyOtp: (phone: string, code: string) =>
       this.request("/api/auth/verify-otp", { method: "POST", body: { phone, code } }),
 
-    register: (data: { phone: string; password: string; pin: string; fullName?: string }) =>
-      this.request("/api/auth/register", { method: "POST", body: data }),
+    register: async (data: { phone: string; password: string; pin: string; fullName?: string }) => {
+      const result = await this.request("/api/auth/register", { method: "POST", body: data });
+      // Store the JWT token returned from registration
+      if (result.token) {
+        await tokenStore.set(result.token);
+      }
+      return result;
+    },
 
-    login: (phone: string, password: string) =>
-      this.request("/api/auth/login", { method: "POST", body: { phone, password } }),
+    login: async (phone: string, password: string) => {
+      const result = await this.request("/api/auth/login", { method: "POST", body: { phone, password } });
+      // Store the JWT token returned from login
+      if (result.token) {
+        await tokenStore.set(result.token);
+      }
+      return result;
+    },
 
-    logout: () =>
-      this.request("/api/auth/logout", { method: "POST" }),
+    logout: async () => {
+      const result = await this.request("/api/auth/logout", { method: "POST" });
+      // Clear stored token
+      await tokenStore.remove();
+      return result;
+    },
 
     me: () =>
       this.request("/api/auth/me"),

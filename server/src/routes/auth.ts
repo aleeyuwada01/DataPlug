@@ -5,6 +5,7 @@ import { db } from "../db";
 import { users, wallets, rewards, otpCodes } from "../db/schema";
 import { eq, and, gt } from "drizzle-orm";
 import { sendOtp, verifyOtp } from "../services/termii";
+import { generateToken } from "../auth/middleware";
 
 const router = Router();
 
@@ -158,24 +159,23 @@ router.post("/register", async (req: Request, res: Response) => {
       totalPoints: 50, // Welcome bonus points
     });
 
-    // Log the user in automatically
-    req.login(newUser, (err) => {
-      if (err) return res.status(500).json({ error: "Registration succeeded but login failed" });
+    // Generate JWT token
+    const token = generateToken(newUser.id);
+    const { passwordHash: _, pinHash: __, ...safeUser } = newUser;
 
-      req.session.save((saveErr) => {
-        if (saveErr) console.error("Session save error during registration:", saveErr);
-        const { passwordHash: _, pinHash: __, ...safeUser } = newUser;
-        res.status(201).json({
-          message: "Account created successfully! Welcome bonus credited.",
-          user: safeUser,
-          welcomeBonus: { data: "1GB", walletCredit: "₦250" },
-        });
+    // Also log in via session (for backward compat)
+    req.login(newUser, (err) => {
+      if (err) console.warn("Session login failed (JWT still valid):", err);
+      res.status(201).json({
+        message: "Account created successfully! Welcome bonus credited.",
+        user: safeUser,
+        token,
+        welcomeBonus: { data: "1GB", walletCredit: "₦250" },
       });
     });
   } catch (err: any) {
     console.error("Register error:", err);
     res.status(500).json({ error: "Registration failed" });
-  }
 });
 
 // ─── Login ───────────────────────────────────────────────────────────────────
@@ -184,14 +184,14 @@ router.post("/login", (req: Request, res: Response, next) => {
     if (err) return next(err);
     if (!user) return res.status(401).json({ error: info?.message || "Invalid credentials" });
 
-    req.login(user, (loginErr) => {
-      if (loginErr) return next(loginErr);
+    // Generate JWT token
+    const token = generateToken(user.id);
+    const { passwordHash, pinHash, ...safeUser } = user;
 
-      req.session.save((saveErr) => {
-        if (saveErr) console.error("Session save error during login:", saveErr);
-        const { passwordHash, pinHash, ...safeUser } = user;
-        res.json({ message: "Logged in successfully", user: safeUser });
-      });
+    // Also log in via session (for backward compat)
+    req.login(user, (loginErr) => {
+      if (loginErr) console.warn("Session login failed (JWT still valid):", loginErr);
+      res.json({ message: "Logged in successfully", user: safeUser, token });
     });
   })(req, res, next);
 });
@@ -208,7 +208,9 @@ router.post("/logout", (req: Request, res: Response) => {
 
 // ─── Current User ────────────────────────────────────────────────────────────
 router.get("/me", (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) return res.status(401).json({ error: "Not authenticated" });
+  const isJwtAuth = (req as any)._jwtAuthenticated;
+  const isSessionAuth = req.isAuthenticated && req.isAuthenticated();
+  if (!isJwtAuth && !isSessionAuth) return res.status(401).json({ error: "Not authenticated" });
   res.json({ user: req.user });
 });
 
