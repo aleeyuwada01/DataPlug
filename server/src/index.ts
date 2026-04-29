@@ -95,6 +95,11 @@ app.use("/api/transactions", transactionRoutes);
 app.use("/api/rewards", rewardRoutes);
 app.use("/api/admin", adminRoutes);
 
+// ─── Root Route ──────────────────────────────────────────────────────────────
+app.get("/", (_req, res) => {
+  res.json({ message: "Welcome to the DataPlug API" });
+});
+
 // ─── Health Check ────────────────────────────────────────────────────────────
 app.get("/api/health", (_req, res) => {
   res.json({

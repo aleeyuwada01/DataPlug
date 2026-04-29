@@ -16,7 +16,7 @@ const getDevBase = () => {
 
 const DEV_BASE = getDevBase();
 
-const PROD_BASE = "https://your-dataplug-server.onrender.com"; // Update for production
+const PROD_BASE = process.env.EXPO_PUBLIC_API_URL || "https://dataplug-prwt.onrender.com"; // Updated for actual production
 
 const BASE_URL = __DEV__ ? DEV_BASE : PROD_BASE;
 
