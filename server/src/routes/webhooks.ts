@@ -3,7 +3,7 @@ import crypto from "crypto";
 import { db } from "../db";
 import { wallets, transactions, users } from "../db/schema";
 import { eq, sql } from "drizzle-orm";
-import { verifyCharge } from "../services/flutterwave";
+import { verifyTransaction } from "../services/flutterwave";
 
 const router = Router();
 
@@ -65,7 +65,7 @@ async function processWebhookEvent(event: any) {
     const reference = event.data.tx_ref || event.data.reference; // Sometimes named tx_ref
 
     // 1. Verify the charge (API Re-query Best Practice)
-    const verifiedCharge = await verifyCharge(chargeId);
+    const verifiedCharge = await verifyTransaction(chargeId);
 
     if ((verifiedCharge.status !== "successful" && verifiedCharge.status !== "succeeded") || 
          verifiedCharge.tx_ref !== reference) {
@@ -111,13 +111,15 @@ async function processWebhookEvent(event: any) {
       // 3. Handle Static Virtual Account Transfers (No prior pending transaction)
       let userId: number | null = null;
       const email = verifiedCharge.customer?.email || "";
+      const meta = verifiedCharge.meta || {};
       
       const emailMatch = email.match(/^user(\d+)@dataplug\.app$/);
       if (emailMatch) {
         userId = parseInt(emailMatch[1], 10);
       } else {
         // Try fallback lookup by BVN if attached, or customer ID if we stored it
-        // Note: verifyCharge might not return BVN, but if we stored fw customer ID we could match
+        // Or better, look up by virtual account number from the webhook data
+        console.log("Static transfer webhook meta/customer data:", JSON.stringify(verifiedCharge.customer));
       }
 
       if (userId) {

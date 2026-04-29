@@ -225,9 +225,9 @@ router.post("/opay", async (req: Request, res: Response) => {
 
     res.json({
       message: "OPay charge initiated",
-      redirectUrl: chargeData.redirectUrl,
+      redirectUrl: chargeData.paymentLink,
       reference: ref,
-      chargeId: chargeData.chargeId,
+      chargeId: ref, // Standard payment doesn't give a chargeId upfront, ref is enough
     });
   } catch (err: any) {
     console.error("OPay charge error:", err);

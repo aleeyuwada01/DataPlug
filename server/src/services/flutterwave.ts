@@ -1,9 +1,8 @@
 import { randomUUID } from "crypto";
 
 const FLUTTERWAVE_BASE_URL = "https://api.flutterwave.com/v3";
-// Use test keys for sandbox or live keys for production.
-// We fallback to empty string so it doesn't crash on boot without a key.
 const SECRET_KEY = process.env.FLUTTERWAVE_SECRET_KEY || "";
+const PUBLIC_KEY = process.env.FLUTTERWAVE_PUBLIC_KEY || "";
 
 /**
  * Generates a static virtual account for a user using their BVN.
@@ -87,10 +86,13 @@ export async function generateDynamicVirtualAccount(user: {
 }
 
 /**
- * Verifies a Flutterwave charge.
+ * Verifies a Flutterwave transaction by its ID.
+ * Uses the correct endpoint: GET /v3/transactions/{id}/verify
  */
-export async function verifyCharge(chargeId: string) {
-  const response = await fetch(`${FLUTTERWAVE_BASE_URL}/charges/${chargeId}`, {
+export async function verifyTransaction(transactionId: string | number) {
+  console.log(`[FLW] Verifying transaction ID: ${transactionId}`);
+
+  const response = await fetch(`${FLUTTERWAVE_BASE_URL}/transactions/${transactionId}/verify`, {
     method: "GET",
     headers: {
       Authorization: `Bearer ${SECRET_KEY}`,
@@ -101,14 +103,25 @@ export async function verifyCharge(chargeId: string) {
   const data = (await response.json()) as any;
 
   if (!response.ok) {
-    throw new Error("Failed to verify charge");
+    console.error("[FLW] Verify transaction error:", data);
+    throw new Error(data.message || "Failed to verify transaction");
   }
 
-  return data.data; // Contains status, amount, reference, etc.
+  console.log(`[FLW] Verified transaction:`, {
+    status: data.data?.status,
+    amount: data.data?.amount,
+    tx_ref: data.data?.tx_ref,
+    customer_email: data.data?.customer?.email,
+  });
+
+  return data.data; // Contains status, amount, tx_ref, customer, etc.
 }
 
+// Keep old name as alias for backward compat
+export const verifyCharge = verifyTransaction;
+
 /**
- * Fetches list of Nigerian banks for USSD bank selection.
+ * Fetches list of Nigerian banks.
  */
 export async function getNGBanks() {
   const response = await fetch(`${FLUTTERWAVE_BASE_URL}/banks/NG`, {
@@ -130,8 +143,67 @@ export async function getNGBanks() {
 }
 
 /**
- * Initiates a USSD charge using the Flutterwave Orchestrator flow (V2).
- * Returns the USSD string the user needs to dial.
+ * Initializes a Flutterwave Standard payment.
+ * Returns a payment link that redirects the user to Flutterwave's hosted checkout.
+ * Supports: Card, Bank Transfer, USSD, OPay, and more.
+ */
+export async function initializePayment(params: {
+  amount: number;
+  email: string;
+  fullName: string;
+  phone: string;
+  reference: string;
+  redirectUrl: string;
+  title?: string;
+  description?: string;
+}) {
+  console.log(`[FLW] Initializing payment: amount=${params.amount}, ref=${params.reference}`);
+
+  const response = await fetch(`${FLUTTERWAVE_BASE_URL}/payments`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${SECRET_KEY}`,
+    },
+    body: JSON.stringify({
+      tx_ref: params.reference,
+      amount: params.amount,
+      currency: "NGN",
+      redirect_url: params.redirectUrl,
+      payment_options: "card,banktransfer,ussd,opay",
+      customer: {
+        email: params.email,
+        phonenumber: params.phone,
+        name: params.fullName,
+      },
+      customizations: {
+        title: params.title || "DataPlug Wallet Top-Up",
+        description: params.description || `Fund your wallet with ₦${params.amount.toLocaleString()}`,
+        logo: "https://dataplug-1.onrender.com/favicon.ico",
+      },
+      meta: {
+        source: "dataplug-web",
+      },
+    }),
+  });
+
+  const data = (await response.json()) as any;
+
+  if (!response.ok || data.status !== "success") {
+    console.error("[FLW] Initialize payment error:", data);
+    throw new Error(data.message || "Failed to initialize payment");
+  }
+
+  console.log(`[FLW] Payment link created: ${data.data?.link}`);
+
+  return {
+    paymentLink: data.data.link,
+    reference: params.reference,
+  };
+}
+
+/**
+ * Initiates a USSD charge via Flutterwave v3 standard API.
  */
 export async function initiateUSSDCharge(params: {
   amount: number;
@@ -141,103 +213,43 @@ export async function initiateUSSDCharge(params: {
   bankCode: string;
   reference: string;
 }) {
-  // Step 1: Create or get customer
-  const customer = await createFlwCustomer(params.email, params.fullName, params.phoneNumber);
+  console.log(`[FLW] Initiating USSD charge: amount=${params.amount}, bank=${params.bankCode}`);
 
-  // Step 2: Create USSD payment method
-  const pmRes = await fetch(`${FLW_V2_BASE}/payment-methods`, {
+  const response = await fetch(`${FLUTTERWAVE_BASE_URL}/charges?type=ussd`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${SECRET_KEY}`,
     },
     body: JSON.stringify({
-      type: "ussd",
-      ussd: {
-        account_bank: params.bankCode,
-      },
-    }),
-  });
-
-  const pmData = (await pmRes.json()) as any;
-  if (!pmRes.ok || pmData.status === "error") {
-    console.error("FLW USSD payment method error:", pmData);
-    throw new Error(pmData.message || "Failed to create USSD payment method");
-  }
-  const paymentMethodId = pmData.data.id;
-
-  // Step 3: Create the charge
-  const chargeRes = await fetch(`${FLW_V2_BASE}/charges`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${SECRET_KEY}`,
-    },
-    body: JSON.stringify({
-      customer_id: customer.id,
-      payment_method_id: paymentMethodId,
+      tx_ref: params.reference,
+      account_bank: params.bankCode,
       amount: params.amount,
       currency: "NGN",
-      reference: params.reference,
-    }),
-  });
-
-  const chargeData = (await chargeRes.json()) as any;
-  if (!chargeRes.ok || chargeData.status === "error") {
-    console.error("FLW USSD charge error:", chargeData);
-    throw new Error(chargeData.message || "Failed to initiate USSD charge");
-  }
-
-  // The code is in next_action.payment_instruction.note
-  let ussdCode = chargeData.data?.next_action?.payment_instruction?.note || "";
-  
-  // Clean up the note if it contains extra text (Flutterwave notes often say "Please dial *...#")
-  const match = ussdCode.match(/\*[0-9*#]+#/);
-  if (match) {
-    ussdCode = match[0];
-  }
-
-  return {
-    ussdCode,
-    reference: params.reference,
-    id: chargeData.data.id,
-  };
-}
-
-// ─── OPay uses the Flutterwave v2 Orchestrator API ───────────────────────────
-const FLW_V2_BASE = "https://api.flutterwave.com";
-
-/**
- * Creates or retrieves a Flutterwave customer for OPay charges.
- */
-async function createFlwCustomer(email: string, fullName: string, phone: string) {
-  const [first = "DataPlug", ...lastParts] = (fullName || "").split(" ");
-  const last = lastParts.join(" ") || "User";
-
-  const response = await fetch(`${FLW_V2_BASE}/customers`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${SECRET_KEY}`,
-    },
-    body: JSON.stringify({
-      email,
-      name: { first, last },
-      phone: { country_code: "234", number: phone.replace(/^\+?234|^0/, "") },
+      email: params.email,
+      phone_number: params.phoneNumber,
+      fullname: params.fullName,
     }),
   });
 
   const data = (await response.json()) as any;
+
   if (!response.ok || data.status === "error") {
-    console.error("FLW create customer error:", data);
-    throw new Error(data.message || "Failed to create customer");
+    console.error("[FLW] USSD charge error:", data);
+    throw new Error(data.message || "Failed to initiate USSD charge");
   }
-  return data.data; // { id: "cus_..." }
+
+  console.log("[FLW] USSD charge response:", JSON.stringify(data.data, null, 2));
+
+  return {
+    ussdCode: data.meta?.authorization?.note || data.data?.payment_code || "Dial your bank's USSD code",
+    reference: params.reference,
+    id: data.data?.id,
+  };
 }
 
 /**
- * Initiates an OPay charge via Flutterwave's orchestrator.
- * Returns the redirect URL the user must visit to authorize.
+ * Initiates an OPay charge — uses Flutterwave Standard payment link.
  */
 export async function initiateOPayCharge(params: {
   amount: number;
@@ -247,55 +259,10 @@ export async function initiateOPayCharge(params: {
   reference: string;
   redirectUrl: string;
 }) {
-  // Step 1: Create customer
-  const customer = await createFlwCustomer(params.email, params.fullName, params.phone);
-
-  // Step 2: Create OPay payment method
-  const pmRes = await fetch(`${FLW_V2_BASE}/payment-methods`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${SECRET_KEY}`,
-    },
-    body: JSON.stringify({ type: "opay" }),
+  // OPay is handled via Flutterwave Standard checkout
+  return initializePayment({
+    ...params,
+    title: "DataPlug - OPay Payment",
+    description: `Fund wallet with ₦${params.amount.toLocaleString()} via OPay`,
   });
-  const pmData = (await pmRes.json()) as any;
-  if (!pmRes.ok || pmData.status === "error") {
-    console.error("FLW create payment method error:", pmData);
-    throw new Error(pmData.message || "Failed to create OPay payment method");
-  }
-  const paymentMethodId = pmData.data.id;
-
-  // Step 3: Create charge
-  const chargeRes = await fetch(`${FLW_V2_BASE}/charges`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${SECRET_KEY}`,
-    },
-    body: JSON.stringify({
-      customer_id: customer.id,
-      payment_method_id: paymentMethodId,
-      amount: params.amount,
-      currency: "NGN",
-      reference: params.reference,
-      redirect_url: params.redirectUrl,
-    }),
-  });
-  const chargeData = (await chargeRes.json()) as any;
-  if (!chargeRes.ok || chargeData.status === "error") {
-    console.error("FLW OPay charge error:", chargeData);
-    throw new Error(chargeData.message || "Failed to initiate OPay charge");
-  }
-
-  const redirectUrl = chargeData.data?.next_action?.redirect_url?.url;
-  if (!redirectUrl) {
-    throw new Error("OPay redirect URL not returned");
-  }
-
-  return {
-    chargeId: chargeData.data.id,
-    redirectUrl,
-    reference: params.reference,
-  };
 }
