@@ -1,5 +1,4 @@
 import { Platform } from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 
 /**
  * DataPlug API Client
@@ -32,37 +31,27 @@ type RequestOptions = {
 
 /** Simple token storage that works on both web and native */
 const tokenStore = {
-  async get(): Promise<string | null> {
-    try {
-      if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        return localStorage.getItem(TOKEN_KEY);
-      }
-      return await AsyncStorage.getItem(TOKEN_KEY);
-    } catch {
-      return null;
+  _memoryToken: null as string | null,
+
+  get(): string | null {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      return localStorage.getItem(TOKEN_KEY);
     }
+    return this._memoryToken;
   },
-  async set(token: string): Promise<void> {
-    try {
-      if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        localStorage.setItem(TOKEN_KEY, token);
-        return;
-      }
-      await AsyncStorage.setItem(TOKEN_KEY, token);
-    } catch {
-      // Silently fail
+  set(token: string): void {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      localStorage.setItem(TOKEN_KEY, token);
+      return;
     }
+    this._memoryToken = token;
   },
-  async remove(): Promise<void> {
-    try {
-      if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        localStorage.removeItem(TOKEN_KEY);
-        return;
-      }
-      await AsyncStorage.removeItem(TOKEN_KEY);
-    } catch {
-      // Silently fail
+  remove(): void {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      localStorage.removeItem(TOKEN_KEY);
+      return;
     }
+    this._memoryToken = null;
   },
 };
 
@@ -77,7 +66,7 @@ class ApiClient {
     const { method = "GET", body, headers = {} } = options;
 
     // Get stored JWT token
-    const token = await tokenStore.get();
+    const token = tokenStore.get();
 
     const config: RequestInit = {
       method,
@@ -122,7 +111,7 @@ class ApiClient {
       const result = await this.request("/api/auth/register", { method: "POST", body: data });
       // Store the JWT token returned from registration
       if (result.token) {
-        await tokenStore.set(result.token);
+        tokenStore.set(result.token);
       }
       return result;
     },
@@ -131,7 +120,7 @@ class ApiClient {
       const result = await this.request("/api/auth/login", { method: "POST", body: { phone, password } });
       // Store the JWT token returned from login
       if (result.token) {
-        await tokenStore.set(result.token);
+        tokenStore.set(result.token);
       }
       return result;
     },
@@ -139,7 +128,7 @@ class ApiClient {
     logout: async () => {
       const result = await this.request("/api/auth/logout", { method: "POST" });
       // Clear stored token
-      await tokenStore.remove();
+      tokenStore.remove();
       return result;
     },
 
